@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Init.Steps;
-using Nethermind.Serialization.Rlp;
+namespace Nethermind.Blockchain.Receipts;
 
-namespace Nethermind.Consensus.AuRa.InitializationSteps
+public enum ReceiptsRecoveryResult
 {
-    public class InitRlpAuRa : InitRlp
-    {
-        public InitRlpAuRa(AuRaNethermindApi context) : base(context) { }
-
-        public override Task Execute(CancellationToken cancellationToken)
-        {
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            return base.Execute(cancellationToken);
-        }
-    }
+    Success,
+    Fail,
+    Skipped
 }

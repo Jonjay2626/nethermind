@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Abi;
@@ -27,11 +26,9 @@ using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
-using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.Network.Config;
 
 
 namespace Nethermind.AccountAbstraction
@@ -45,6 +42,7 @@ namespace Nethermind.AccountAbstraction
 
         private INethermindApi _nethermindApi = null!;
         private IList<Address> _entryPointContractAddresses = new List<Address>();
+        private IList<Address> _whitelistedPaymasters = new List<Address>();
         private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
@@ -127,6 +125,7 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi,
                 _create2FactoryAddress,
                 entryPoint,
+                _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
                 getFromApi.BlockTree!,
                 getFromApi.DbProvider!,
@@ -186,6 +185,9 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
+                // Increasing number of priority peers in network config by AaPriorityPeersMaxCount.
+                // Be careful if there is another plugin with priority peers - they won't be distinguished in SyncPeerPool.
+                _nethermindApi.Config<INetworkConfig>().PriorityPeersMaxCount += _accountAbstractionConfig.AaPriorityPeersMaxCount;
                 IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string addressString in entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
@@ -197,8 +199,24 @@ namespace Nethermind.AccountAbstraction
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
+                        if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint address: {entryPointContractAddress}");
                         _entryPointContractAddresses.Add(entryPointContractAddress!);
+                    }
+                }
+                
+                IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
+                foreach (string addressString in whitelistedPaymastersString){
+                    bool parsed = Address.TryParse(
+                        addressString,
+                        out Address? whitelistedPaymaster);
+                    if (!parsed)
+                    {
+                        if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Whitelisted Paymaster address could not be parsed");
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Parsed Whitelisted Paymaster address: {whitelistedPaymaster}");
+                        _whitelistedPaymasters.Add(whitelistedPaymaster!);
                     }
                 }
 
@@ -257,7 +275,7 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
-                AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _logger);
+                AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _accountAbstractionConfig.AaPriorityPeersMaxCount, _logger);
 
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
@@ -298,7 +316,7 @@ namespace Nethermind.AccountAbstraction
                 
                 ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
-                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+                subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                     "newPendingUserOperations",
                     (jsonRpcDuplexClient, param) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
@@ -306,7 +324,7 @@ namespace Nethermind.AccountAbstraction
                         logManager,
                         param)
                 );
-                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+                subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                     "newReceivedUserOperations",
                     (jsonRpcDuplexClient, param) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,

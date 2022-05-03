@@ -93,6 +93,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
+            public void SetPeerPriority(PublicKey id)
+            {
+            }
+
             public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }
@@ -112,6 +116,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
 
             public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
+            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
         }
 
         private class TestBatch

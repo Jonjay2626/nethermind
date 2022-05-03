@@ -111,7 +111,8 @@ namespace Nethermind.Init.Steps
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
+            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
             SyncProgressResolver syncProgressResolver = new(
@@ -475,11 +476,6 @@ namespace Nethermind.Init.Steps
             }
             
             _api.ProtocolValidator = protocolValidator;
-
-            foreach (INethermindPlugin plugin in _api.Plugins)
-            {
-                await plugin.InitNetworkProtocol();
-            }
             
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
             
@@ -507,6 +503,11 @@ namespace Nethermind.Init.Steps
                     
                 }
             });
+            
+            foreach (INethermindPlugin plugin in _api.Plugins)
+            {
+                await plugin.InitNetworkProtocol();
+            }
         }
     }
 }
